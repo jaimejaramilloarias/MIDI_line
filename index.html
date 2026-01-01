@@ -81,23 +81,30 @@
           </label>
           <label>
             Suavizado de tono
-            <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0.6" />
-            <span id="smoothing-value">0.6</span>
+            <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0.45" />
+            <span id="smoothing-value">0.45</span>
           </label>
           <label>
             Estabilidad mínima (frames)
-            <input id="stability" type="range" min="2" max="20" value="6" />
-            <span id="stability-value">6</span>
+            <input id="stability" type="range" min="2" max="20" value="4" />
+            <span id="stability-value">4</span>
           </label>
           <label>
             Duración mínima nota (ms)
-            <input id="min-duration" type="range" min="40" max="400" step="10" value="120" />
-            <span id="min-duration-value">120 ms</span>
+            <input id="min-duration" type="range" min="40" max="400" step="10" value="80" />
+            <span id="min-duration-value">80 ms</span>
           </label>
           <label>
             Rango de pitch bend (semitonos)
             <input id="bend-range" type="range" min="1" max="12" value="2" />
             <span id="bend-range-value">2</span>
+          </label>
+          <label class="toggle">
+            <span>Pitch bend (gliss)</span>
+            <div class="toggle-row">
+              <input id="pitch-bend-enabled" type="checkbox" />
+              <small>Desactivado para evitar gliss y temperar notas.</small>
+            </div>
           </label>
           <label>
             Umbral de cambio de nota (cents)
@@ -116,8 +123,13 @@
           </label>
           <label>
             Umbral de claridad
-            <input id="clarity-threshold" type="range" min="0.5" max="0.98" step="0.01" value="0.75" />
-            <span id="clarity-threshold-value">0.75</span>
+            <input id="clarity-threshold" type="range" min="0.5" max="0.98" step="0.01" value="0.78" />
+            <span id="clarity-threshold-value">0.78</span>
+          </label>
+          <label>
+            Delta de ataque (dB)
+            <input id="attack-threshold" type="range" min="2" max="12" step="1" value="6" />
+            <span id="attack-threshold-value">6 dB</span>
           </label>
           <label>
             Sensibilidad de velocidad
@@ -126,8 +138,8 @@
           </label>
           <label>
             Intervalo de análisis (ms)
-            <input id="analysis-interval" type="range" min="10" max="100" step="5" value="30" />
-            <span id="analysis-interval-value">30 ms</span>
+            <input id="analysis-interval" type="range" min="10" max="100" step="5" value="20" />
+            <span id="analysis-interval-value">20 ms</span>
           </label>
           <label class="toggle">
             <span>Monitor interno</span>
@@ -156,6 +168,7 @@
           <li>Reduce efectos (reverb/distorsión) para evitar armónicos falsos.</li>
           <li>Ajusta la puerta de ruido para eliminar zumbidos y ruido de fondo.</li>
           <li>Aumenta la estabilidad mínima si aparecen notas fantasma.</li>
+          <li>El modo temperado evita gliss: activa pitch bend solo si lo necesitas.</li>
           <li>Configura el rango de pitch bend acorde a tu plugin o sintetizador.</li>
           <li>Si no tienes un dispositivo MIDI, activa el monitor interno para escuchar la salida.</li>
         </ul>
