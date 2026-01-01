@@ -4,9 +4,16 @@ const ui = {
   status: document.getElementById("status"),
   note: document.getElementById("note"),
   frequency: document.getElementById("frequency"),
-  velocity: document.getElementById("velocity"),
+  velocity: document.getElementById("velocity-display"),
+  clarity: document.getElementById("clarity"),
   midiOutput: document.getElementById("midi-output"),
   log: document.getElementById("log"),
+  inputGain: document.getElementById("input-gain"),
+  inputGainValue: document.getElementById("input-gain-value"),
+  highpass: document.getElementById("highpass"),
+  highpassValue: document.getElementById("highpass-value"),
+  lowpass: document.getElementById("lowpass"),
+  lowpassValue: document.getElementById("lowpass-value"),
   noiseGate: document.getElementById("noise-gate"),
   noiseGateValue: document.getElementById("noise-gate-value"),
   smoothing: document.getElementById("smoothing"),
@@ -19,10 +26,19 @@ const ui = {
   bendRangeValue: document.getElementById("bend-range-value"),
   noteHysteresis: document.getElementById("note-hysteresis"),
   noteHysteresisValue: document.getElementById("note-hysteresis-value"),
+  minFrequency: document.getElementById("min-frequency"),
+  minFrequencyValue: document.getElementById("min-frequency-value"),
+  maxFrequency: document.getElementById("max-frequency"),
+  maxFrequencyValue: document.getElementById("max-frequency-value"),
+  clarityThreshold: document.getElementById("clarity-threshold"),
+  clarityThresholdValue: document.getElementById("clarity-threshold-value"),
   velocitySensitivity: document.getElementById("velocity"),
   velocitySensitivityValue: document.getElementById("velocity-value"),
   analysisInterval: document.getElementById("analysis-interval"),
   analysisIntervalValue: document.getElementById("analysis-interval-value"),
+  monitorEnabled: document.getElementById("monitor-enabled"),
+  monitorVolume: document.getElementById("monitor-volume"),
+  monitorVolumeValue: document.getElementById("monitor-volume-value"),
 };
 
 let audioContext;
@@ -32,12 +48,21 @@ let isRunning = false;
 let midiAccess;
 let midiOutput;
 let analysisTimer;
+let gainNode;
+let highpassFilter;
+let lowpassFilter;
 
 let currentNote = null;
 let lastStableNote = null;
 let stableCount = 0;
 let lastNoteOnTime = 0;
 let lastFrequency = 0;
+let lastClarity = 0;
+let monitorContext;
+let monitorGain;
+let monitorOscillator;
+let monitorNote = null;
+let lastMonitorUpdate = 0;
 
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -52,14 +77,21 @@ const updateValue = (input, output, suffix = "") => {
 
 const initControlBindings = () => {
   const bindings = [
+    [ui.inputGain, ui.inputGainValue, " dB"],
+    [ui.highpass, ui.highpassValue, " Hz"],
+    [ui.lowpass, ui.lowpassValue, " Hz"],
     [ui.noiseGate, ui.noiseGateValue, " dB"],
     [ui.smoothing, ui.smoothingValue, ""],
     [ui.stability, ui.stabilityValue, ""],
     [ui.minDuration, ui.minDurationValue, " ms"],
     [ui.bendRange, ui.bendRangeValue, ""],
     [ui.noteHysteresis, ui.noteHysteresisValue, ""],
+    [ui.minFrequency, ui.minFrequencyValue, " Hz"],
+    [ui.maxFrequency, ui.maxFrequencyValue, " Hz"],
+    [ui.clarityThreshold, ui.clarityThresholdValue, ""],
     [ui.velocitySensitivity, ui.velocitySensitivityValue, ""],
     [ui.analysisInterval, ui.analysisIntervalValue, " ms"],
+    [ui.monitorVolume, ui.monitorVolumeValue, ""],
   ];
 
   bindings.forEach(([input, output, suffix]) => {
@@ -83,8 +115,12 @@ const autoCorrelate = (buffer, sampleRate) => {
     return { frequency: null, rms };
   }
 
-  const correlation = new Array(size).fill(0);
-  for (let lag = 0; lag < size; lag += 1) {
+  const minFrequency = Number(ui.minFrequency.value);
+  const maxFrequency = Number(ui.maxFrequency.value);
+  const minLag = Math.floor(sampleRate / maxFrequency);
+  const maxLag = Math.min(size - 1, Math.floor(sampleRate / minFrequency));
+  const correlation = new Array(maxLag + 1).fill(0);
+  for (let lag = minLag; lag <= maxLag; lag += 1) {
     let sum = 0;
     for (let i = 0; i < size - lag; i += 1) {
       sum += buffer[i] * buffer[i + lag];
@@ -92,14 +128,14 @@ const autoCorrelate = (buffer, sampleRate) => {
     correlation[lag] = sum;
   }
 
-  let dip = 0;
-  while (dip < size - 1 && correlation[dip] > correlation[dip + 1]) {
+  let dip = minLag;
+  while (dip < maxLag - 1 && correlation[dip] > correlation[dip + 1]) {
     dip += 1;
   }
 
   let peak = -1;
   let peakIndex = -1;
-  for (let i = dip; i < size; i += 1) {
+  for (let i = dip; i <= maxLag; i += 1) {
     if (correlation[i] > peak) {
       peak = correlation[i];
       peakIndex = i;
@@ -110,8 +146,9 @@ const autoCorrelate = (buffer, sampleRate) => {
     return { frequency: null, rms };
   }
 
+  const clarity = peak / (correlation[minLag] || peak || 1);
   const frequency = sampleRate / peakIndex;
-  return { frequency, rms };
+  return { frequency, rms, clarity };
 };
 
 const frequencyToMidi = (frequency) => 69 + 12 * Math.log2(frequency / 440);
@@ -146,6 +183,53 @@ const sendPitchBend = (value) => {
   sendMidi([0xe0, lsb, msb]);
 };
 
+const ensureMonitorContext = () => {
+  if (!monitorContext) {
+    monitorContext = new (window.AudioContext || window.webkitAudioContext)();
+    monitorGain = monitorContext.createGain();
+    monitorGain.gain.value = Number(ui.monitorVolume.value);
+    monitorGain.connect(monitorContext.destination);
+  }
+};
+
+const setMonitorActive = (active, note, velocity) => {
+  if (!ui.monitorEnabled.checked) {
+    return;
+  }
+
+  ensureMonitorContext();
+
+  if (active) {
+    const now = monitorContext.currentTime;
+    const frequency = 440 * 2 ** ((note - 69) / 12);
+    if (!monitorOscillator) {
+      monitorOscillator = monitorContext.createOscillator();
+      monitorOscillator.type = "sine";
+      monitorOscillator.connect(monitorGain);
+      monitorOscillator.start();
+    }
+    if (monitorNote !== note) {
+      monitorOscillator.frequency.setTargetAtTime(frequency, now, 0.01);
+      monitorNote = note;
+    }
+    const targetGain = Math.max(0.05, Math.min(0.8, velocity / 127));
+    monitorGain.gain.setTargetAtTime(targetGain, now, 0.02);
+  } else if (monitorGain) {
+    monitorGain.gain.setTargetAtTime(0, monitorContext.currentTime, 0.03);
+    monitorNote = null;
+  }
+};
+
+const updateMonitorPitch = (note) => {
+  if (!monitorOscillator || monitorNote === null) {
+    return;
+  }
+  const now = monitorContext.currentTime;
+  const frequency = 440 * 2 ** ((note - 69) / 12);
+  monitorOscillator.frequency.setTargetAtTime(frequency, now, 0.01);
+  monitorNote = note;
+};
+
 const updateMidiOutputList = () => {
   ui.midiOutput.innerHTML = '<option value="">Sin dispositivo</option>';
   if (!midiAccess) {
@@ -160,13 +244,14 @@ const updateMidiOutputList = () => {
   }
 };
 
-const handlePitch = (frequency, rms) => {
+const handlePitch = (frequency, rms, clarity) => {
   if (!frequency) {
     if (currentNote !== null) {
       const now = performance.now();
       if (now - lastNoteOnTime > Number(ui.minDuration.value)) {
         sendNoteOff(currentNote);
         log(`Note Off ${midiToNoteName(currentNote)}`);
+        setMonitorActive(false);
         currentNote = null;
         lastStableNote = null;
         stableCount = 0;
@@ -175,6 +260,7 @@ const handlePitch = (frequency, rms) => {
     ui.note.textContent = "--";
     ui.frequency.textContent = "-- Hz";
     ui.velocity.textContent = "--";
+    ui.clarity.textContent = "--";
     return;
   }
 
@@ -186,6 +272,12 @@ const handlePitch = (frequency, rms) => {
   ui.note.textContent = midiToNoteName(note);
   ui.frequency.textContent = `${frequency.toFixed(1)} Hz`;
   ui.velocity.textContent = velocity;
+  ui.clarity.textContent = clarity.toFixed(2);
+
+  if (clarity < Number(ui.clarityThreshold.value)) {
+    stableCount = 0;
+    return;
+  }
 
   if (lastStableNote === note) {
     stableCount += 1;
@@ -206,6 +298,7 @@ const handlePitch = (frequency, rms) => {
       lastNoteOnTime = performance.now();
       sendNoteOn(note, velocity);
       log(`Note On ${midiToNoteName(note)} vel ${velocity}`);
+      setMonitorActive(true, note, velocity);
     }
   }
 
@@ -222,7 +315,7 @@ const analyze = () => {
   }
   const buffer = new Float32Array(analyser.fftSize);
   analyser.getFloatTimeDomainData(buffer);
-  const { frequency, rms } = autoCorrelate(buffer, audioContext.sampleRate);
+  const { frequency, rms, clarity } = autoCorrelate(buffer, audioContext.sampleRate);
   const smoothing = Number(ui.smoothing.value);
   if (frequency && lastFrequency) {
     lastFrequency = smoothing * lastFrequency + (1 - smoothing) * frequency;
@@ -232,7 +325,13 @@ const analyze = () => {
     lastFrequency = 0;
   }
 
-  handlePitch(lastFrequency || null, rms);
+  lastClarity = smoothing * lastClarity + (1 - smoothing) * (clarity || 0);
+  handlePitch(lastFrequency || null, rms, lastClarity);
+
+  if (currentNote !== null && performance.now() - lastMonitorUpdate > 60) {
+    updateMonitorPitch(currentNote);
+    lastMonitorUpdate = performance.now();
+  }
 };
 
 const startAnalysis = () => {
@@ -255,12 +354,34 @@ const start = async () => {
   ui.status.textContent = "Iniciando...";
 
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioContext.createMediaStreamSource(mediaStream);
+    gainNode = audioContext.createGain();
+    highpassFilter = audioContext.createBiquadFilter();
+    lowpassFilter = audioContext.createBiquadFilter();
     analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    source.connect(analyser);
+
+    gainNode.gain.value = 10 ** (Number(ui.inputGain.value) / 20);
+    highpassFilter.type = "highpass";
+    highpassFilter.frequency.value = Number(ui.highpass.value);
+    highpassFilter.Q.value = 0.8;
+    lowpassFilter.type = "lowpass";
+    lowpassFilter.frequency.value = Number(ui.lowpass.value);
+    lowpassFilter.Q.value = 0.8;
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.2;
+
+    source.connect(gainNode);
+    gainNode.connect(highpassFilter);
+    highpassFilter.connect(lowpassFilter);
+    lowpassFilter.connect(analyser);
 
     if (navigator.requestMIDIAccess) {
       midiAccess = await navigator.requestMIDIAccess();
@@ -304,7 +425,11 @@ const stop = () => {
   }
 
   analyser = null;
+  gainNode = null;
+  highpassFilter = null;
+  lowpassFilter = null;
   lastFrequency = 0;
+  lastClarity = 0;
   stableCount = 0;
   lastStableNote = null;
   log("Conversión detenida.");
@@ -317,6 +442,36 @@ ui.midiOutput.addEventListener("change", (event) => {
   midiOutput = id && midiAccess ? midiAccess.outputs.get(id) : null;
   if (midiOutput) {
     log(`Salida MIDI seleccionada: ${midiOutput.name}`);
+  }
+});
+
+ui.inputGain.addEventListener("input", () => {
+  if (gainNode) {
+    gainNode.gain.value = 10 ** (Number(ui.inputGain.value) / 20);
+  }
+});
+
+ui.highpass.addEventListener("input", () => {
+  if (highpassFilter) {
+    highpassFilter.frequency.value = Number(ui.highpass.value);
+  }
+});
+
+ui.lowpass.addEventListener("input", () => {
+  if (lowpassFilter) {
+    lowpassFilter.frequency.value = Number(ui.lowpass.value);
+  }
+});
+
+ui.monitorVolume.addEventListener("input", () => {
+  if (monitorGain) {
+    monitorGain.gain.value = Number(ui.monitorVolume.value);
+  }
+});
+
+ui.monitorEnabled.addEventListener("change", () => {
+  if (!ui.monitorEnabled.checked) {
+    setMonitorActive(false);
   }
 });
 
