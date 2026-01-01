@@ -1,0 +1,1 @@
+Crea una app web que funcione desde github, para convertir audio a midi en tiempo real, específicamente de guitarra eléctrica capturada por línea mediante una tarjeta de sonido local, la app debe evitar artefactos midi y ser lo más precisa posible, además la UI debe tener todos los parámetros de control que puedan servir para mejorar la conversión a midi.
