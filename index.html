@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MIDI Line - Conversión de guitarra a MIDI</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>MIDI Line</h1>
+        <p>
+          Conversión en tiempo real de guitarra eléctrica a MIDI desde la línea de entrada.
+          Ajusta los parámetros para obtener una detección precisa y sin artefactos.
+        </p>
+      </header>
+
+      <section class="status">
+        <div class="status-card">
+          <h2>Estado</h2>
+          <p id="status">Detenido</p>
+          <div class="status-grid">
+            <div>
+              <span>Nota detectada</span>
+              <strong id="note">--</strong>
+            </div>
+            <div>
+              <span>Frecuencia</span>
+              <strong id="frequency">-- Hz</strong>
+            </div>
+            <div>
+              <span>Velocidad</span>
+              <strong id="velocity">--</strong>
+            </div>
+          </div>
+        </div>
+        <div class="status-card">
+          <h2>Salida MIDI</h2>
+          <label for="midi-output">Dispositivo</label>
+          <select id="midi-output">
+            <option value="">Sin dispositivo</option>
+          </select>
+          <p class="hint">Si no hay dispositivos MIDI, el sistema mostrará los eventos en el registro.</p>
+        </div>
+      </section>
+
+      <section class="controls">
+        <div class="controls-header">
+          <h2>Controles de conversión</h2>
+          <div class="button-row">
+            <button id="start">Iniciar</button>
+            <button id="stop" disabled>Detener</button>
+          </div>
+        </div>
+
+        <div class="control-grid">
+          <label>
+            Puerta de ruido (dB)
+            <input id="noise-gate" type="range" min="-90" max="-20" value="-60" />
+            <span id="noise-gate-value">-60 dB</span>
+          </label>
+          <label>
+            Suavizado de tono
+            <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0.6" />
+            <span id="smoothing-value">0.6</span>
+          </label>
+          <label>
+            Estabilidad mínima (frames)
+            <input id="stability" type="range" min="2" max="20" value="6" />
+            <span id="stability-value">6</span>
+          </label>
+          <label>
+            Duración mínima nota (ms)
+            <input id="min-duration" type="range" min="40" max="400" step="10" value="120" />
+            <span id="min-duration-value">120 ms</span>
+          </label>
+          <label>
+            Rango de pitch bend (semitonos)
+            <input id="bend-range" type="range" min="1" max="12" value="2" />
+            <span id="bend-range-value">2</span>
+          </label>
+          <label>
+            Umbral de cambio de nota (cents)
+            <input id="note-hysteresis" type="range" min="10" max="80" value="35" />
+            <span id="note-hysteresis-value">35</span>
+          </label>
+          <label>
+            Sensibilidad de velocidad
+            <input id="velocity" type="range" min="0.2" max="1" step="0.05" value="0.7" />
+            <span id="velocity-value">0.7</span>
+          </label>
+          <label>
+            Intervalo de análisis (ms)
+            <input id="analysis-interval" type="range" min="10" max="100" step="5" value="30" />
+            <span id="analysis-interval-value">30 ms</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="log">
+        <h2>Registro</h2>
+        <textarea id="log" readonly></textarea>
+      </section>
+
+      <section class="tips">
+        <h2>Consejos para mejorar precisión</h2>
+        <ul>
+          <li>Usa la entrada de línea directa de la tarjeta de sonido con nivel adecuado.</li>
+          <li>Reduce efectos (reverb/distorsión) para evitar armónicos falsos.</li>
+          <li>Ajusta la puerta de ruido para eliminar zumbidos y ruido de fondo.</li>
+          <li>Aumenta la estabilidad mínima si aparecen notas fantasma.</li>
+          <li>Configura el rango de pitch bend acorde a tu plugin o sintetizador.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
