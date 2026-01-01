@@ -119,6 +119,22 @@ label {
   font-size: 0.9rem;
 }
 
+.toggle {
+  gap: 12px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #9ba6bc;
+}
+
+.toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
 input[type="range"] {
   width: 100%;
 }
