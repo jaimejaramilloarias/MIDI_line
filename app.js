@@ -24,6 +24,7 @@ const ui = {
   minDurationValue: document.getElementById("min-duration-value"),
   bendRange: document.getElementById("bend-range"),
   bendRangeValue: document.getElementById("bend-range-value"),
+  pitchBendEnabled: document.getElementById("pitch-bend-enabled"),
   noteHysteresis: document.getElementById("note-hysteresis"),
   noteHysteresisValue: document.getElementById("note-hysteresis-value"),
   minFrequency: document.getElementById("min-frequency"),
@@ -32,6 +33,8 @@ const ui = {
   maxFrequencyValue: document.getElementById("max-frequency-value"),
   clarityThreshold: document.getElementById("clarity-threshold"),
   clarityThresholdValue: document.getElementById("clarity-threshold-value"),
+  attackThreshold: document.getElementById("attack-threshold"),
+  attackThresholdValue: document.getElementById("attack-threshold-value"),
   velocitySensitivity: document.getElementById("velocity"),
   velocitySensitivityValue: document.getElementById("velocity-value"),
   analysisInterval: document.getElementById("analysis-interval"),
@@ -58,6 +61,7 @@ let stableCount = 0;
 let lastNoteOnTime = 0;
 let lastFrequency = 0;
 let lastClarity = 0;
+let lastRmsDb = -120;
 let monitorContext;
 let monitorGain;
 let monitorOscillator;
@@ -89,6 +93,7 @@ const initControlBindings = () => {
     [ui.minFrequency, ui.minFrequencyValue, " Hz"],
     [ui.maxFrequency, ui.maxFrequencyValue, " Hz"],
     [ui.clarityThreshold, ui.clarityThresholdValue, ""],
+    [ui.attackThreshold, ui.attackThresholdValue, " dB"],
     [ui.velocitySensitivity, ui.velocitySensitivityValue, ""],
     [ui.analysisInterval, ui.analysisIntervalValue, " ms"],
     [ui.monitorVolume, ui.monitorVolumeValue, ""],
@@ -146,8 +151,20 @@ const autoCorrelate = (buffer, sampleRate) => {
     return { frequency: null, rms };
   }
 
-  const clarity = peak / (correlation[minLag] || peak || 1);
-  const frequency = sampleRate / peakIndex;
+  const r0 = correlation[0] || 1;
+  const clarity = peak / r0;
+  let refinedIndex = peakIndex;
+  if (peakIndex > 1 && peakIndex < maxLag) {
+    const y1 = correlation[peakIndex - 1];
+    const y2 = correlation[peakIndex];
+    const y3 = correlation[peakIndex + 1];
+    const denom = y1 - 2 * y2 + y3;
+    if (Math.abs(denom) > 1e-6) {
+      const delta = 0.5 * (y1 - y3) / denom;
+      refinedIndex = peakIndex + delta;
+    }
+  }
+  const frequency = sampleRate / refinedIndex;
   return { frequency, rms, clarity };
 };
 
@@ -244,12 +261,13 @@ const updateMidiOutputList = () => {
   }
 };
 
-const handlePitch = (frequency, rms, clarity) => {
+const handlePitch = (frequency, rms, clarity, onset) => {
   if (!frequency) {
     if (currentNote !== null) {
       const now = performance.now();
       if (now - lastNoteOnTime > Number(ui.minDuration.value)) {
         sendNoteOff(currentNote);
+        sendPitchBend(0);
         log(`Note Off ${midiToNoteName(currentNote)}`);
         setMonitorActive(false);
         currentNote = null;
@@ -279,6 +297,11 @@ const handlePitch = (frequency, rms, clarity) => {
     return;
   }
 
+  if (onset && (currentNote === null || note !== currentNote)) {
+    lastStableNote = note;
+    stableCount = Number(ui.stability.value);
+  }
+
   if (lastStableNote === note) {
     stableCount += 1;
   } else if (centsDiff <= Number(ui.noteHysteresis.value)) {
@@ -290,6 +313,12 @@ const handlePitch = (frequency, rms, clarity) => {
 
   if (stableCount >= Number(ui.stability.value)) {
     if (currentNote !== note) {
+      if (currentNote !== null && !onset) {
+        const now = performance.now();
+        if (now - lastNoteOnTime < Number(ui.minDuration.value)) {
+          return;
+        }
+      }
       if (currentNote !== null) {
         sendNoteOff(currentNote);
         log(`Note Off ${midiToNoteName(currentNote)}`);
@@ -297,15 +326,20 @@ const handlePitch = (frequency, rms, clarity) => {
       currentNote = note;
       lastNoteOnTime = performance.now();
       sendNoteOn(note, velocity);
+      if (!ui.pitchBendEnabled.checked) {
+        sendPitchBend(0);
+      }
       log(`Note On ${midiToNoteName(note)} vel ${velocity}`);
       setMonitorActive(true, note, velocity);
     }
   }
 
-  if (currentNote !== null) {
+  if (currentNote !== null && ui.pitchBendEnabled.checked) {
     const bendRange = Number(ui.bendRange.value);
     const bendValue = Math.round(((midiValue - currentNote) / bendRange) * 8192);
     sendPitchBend(bendValue);
+  } else if (currentNote !== null && !ui.pitchBendEnabled.checked) {
+    sendPitchBend(0);
   }
 };
 
@@ -316,17 +350,31 @@ const analyze = () => {
   const buffer = new Float32Array(analyser.fftSize);
   analyser.getFloatTimeDomainData(buffer);
   const { frequency, rms, clarity } = autoCorrelate(buffer, audioContext.sampleRate);
+  const rmsDb = dbFromRms(rms);
+  const deltaDb = rmsDb - lastRmsDb;
+  lastRmsDb = rmsDb;
+  const onset = deltaDb > Number(ui.attackThreshold.value);
   const smoothing = Number(ui.smoothing.value);
+  let effectiveSmoothing = smoothing;
   if (frequency && lastFrequency) {
-    lastFrequency = smoothing * lastFrequency + (1 - smoothing) * frequency;
+    const diffCents = Math.abs(1200 * Math.log2(frequency / lastFrequency));
+    if (diffCents > 80) {
+      effectiveSmoothing = Math.min(effectiveSmoothing, 0.15);
+    }
+  }
+  if (onset) {
+    effectiveSmoothing = Math.min(effectiveSmoothing, 0.15);
+  }
+  if (frequency && lastFrequency) {
+    lastFrequency = effectiveSmoothing * lastFrequency + (1 - effectiveSmoothing) * frequency;
   } else if (frequency) {
     lastFrequency = frequency;
   } else {
     lastFrequency = 0;
   }
 
-  lastClarity = smoothing * lastClarity + (1 - smoothing) * (clarity || 0);
-  handlePitch(lastFrequency || null, rms, lastClarity);
+  lastClarity = effectiveSmoothing * lastClarity + (1 - effectiveSmoothing) * (clarity || 0);
+  handlePitch(lastFrequency || null, rms, lastClarity, onset);
 
   if (currentNote !== null && performance.now() - lastMonitorUpdate > 60) {
     updateMonitorPitch(currentNote);
@@ -375,7 +423,7 @@ const start = async () => {
     lowpassFilter.type = "lowpass";
     lowpassFilter.frequency.value = Number(ui.lowpass.value);
     lowpassFilter.Q.value = 0.8;
-    analyser.fftSize = 4096;
+    analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.2;
 
     source.connect(gainNode);
@@ -411,6 +459,7 @@ const stop = () => {
 
   if (currentNote !== null) {
     sendNoteOff(currentNote);
+    sendPitchBend(0);
     currentNote = null;
   }
 
@@ -432,6 +481,7 @@ const stop = () => {
   lastClarity = 0;
   stableCount = 0;
   lastStableNote = null;
+  lastRmsDb = -120;
   log("Conversión detenida.");
 };
 
