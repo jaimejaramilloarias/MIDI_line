@@ -712,15 +712,17 @@ const initPresets = () => {
   if (!ui.preset) {
     return;
   }
-  ui.preset.innerHTML = "";
-  Object.entries(presets).forEach(([key, preset]) => {
-    const option = document.createElement("option");
-    option.value = key;
-    option.textContent = preset.label;
-    ui.preset.appendChild(option);
-  });
-  ui.preset.value = "rapido";
-  applyPreset(ui.preset.value);
+  if (!ui.preset.options.length) {
+    Object.entries(presets).forEach(([key, preset]) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = preset.label;
+      ui.preset.appendChild(option);
+    });
+  }
+  const initialPreset = ui.preset.value || "rapido";
+  ui.preset.value = initialPreset;
+  applyPreset(initialPreset);
   ui.preset.addEventListener("change", (event) => {
     applyPreset(event.target.value);
   });
