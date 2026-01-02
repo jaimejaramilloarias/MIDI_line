@@ -59,6 +59,7 @@ let currentNote = null;
 let lastStableNote = null;
 let stableCount = 0;
 let lastNoteOnTime = 0;
+let lastNoteOffTime = 0;
 let lastFrequency = 0;
 let lastClarity = 0;
 let lastRmsDb = -120;
@@ -273,6 +274,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
         currentNote = null;
         lastStableNote = null;
         stableCount = 0;
+        lastNoteOffTime = now;
       }
     }
     ui.note.textContent = "--";
@@ -294,6 +296,18 @@ const handlePitch = (frequency, rms, clarity, onset) => {
 
   if (clarity < Number(ui.clarityThreshold.value)) {
     stableCount = 0;
+    if (currentNote !== null) {
+      const now = performance.now();
+      if (now - lastNoteOnTime > Number(ui.minDuration.value)) {
+        sendNoteOff(currentNote);
+        sendPitchBend(0);
+        log(`Note Off ${midiToNoteName(currentNote)}`);
+        setMonitorActive(false);
+        currentNote = null;
+        lastStableNote = null;
+        lastNoteOffTime = now;
+      }
+    }
     return;
   }
 
@@ -312,19 +326,25 @@ const handlePitch = (frequency, rms, clarity, onset) => {
   }
 
   if (stableCount >= Number(ui.stability.value)) {
-    if (currentNote !== note) {
-      if (currentNote !== null && !onset) {
-        const now = performance.now();
-        if (now - lastNoteOnTime < Number(ui.minDuration.value)) {
+    const now = performance.now();
+    const minRepeatInterval = Math.max(40, Number(ui.minDuration.value) * 0.5);
+    const canRetriggerSameNote =
+      onset &&
+      currentNote === note &&
+      now - lastNoteOnTime >= minRepeatInterval &&
+      now - lastNoteOffTime >= minRepeatInterval;
+    if (currentNote !== note || canRetriggerSameNote) {
+      if (currentNote !== null) {
+        const duration = now - lastNoteOnTime;
+        if (!onset && duration < Number(ui.minDuration.value)) {
           return;
         }
-      }
-      if (currentNote !== null) {
         sendNoteOff(currentNote);
         log(`Note Off ${midiToNoteName(currentNote)}`);
+        lastNoteOffTime = now;
       }
       currentNote = note;
-      lastNoteOnTime = performance.now();
+      lastNoteOnTime = now;
       sendNoteOn(note, velocity);
       if (!ui.pitchBendEnabled.checked) {
         sendPitchBend(0);
@@ -482,6 +502,7 @@ const stop = () => {
   stableCount = 0;
   lastStableNote = null;
   lastRmsDb = -120;
+  lastNoteOffTime = 0;
   log("Conversión detenida.");
 };
 
