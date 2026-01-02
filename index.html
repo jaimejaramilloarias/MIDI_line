@@ -55,7 +55,12 @@
           <div class="controls-actions">
             <label class="preset-select">
               Preset rápido
-              <select id="preset"></select>
+              <select id="preset">
+                <option value="lento">Tocar lento (sostenido limpio)</option>
+                <option value="rapido" selected>Tocar rápido (picking)</option>
+                <option value="pitchbend">Pitch bend activo (gliss)</option>
+                <option value="vibrato">Vibrato expresivo</option>
+              </select>
             </label>
             <div class="button-row">
               <button id="start">Iniciar</button>
