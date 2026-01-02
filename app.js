@@ -18,6 +18,8 @@ const ui = {
   noiseGateValue: document.getElementById("noise-gate-value"),
   smoothing: document.getElementById("smoothing"),
   smoothingValue: document.getElementById("smoothing-value"),
+  artifactSuppression: document.getElementById("artifact-suppression"),
+  artifactSuppressionValue: document.getElementById("artifact-suppression-value"),
   stability: document.getElementById("stability"),
   stabilityValue: document.getElementById("stability-value"),
   minDuration: document.getElementById("min-duration"),
@@ -91,6 +93,7 @@ const presets = {
       lowpass: 3200,
       noiseGate: -75,
       smoothing: 0.35,
+      artifactSuppression: 0.5,
       stability: 8,
       minDuration: 140,
       bendRange: 2,
@@ -113,6 +116,7 @@ const presets = {
       lowpass: 3800,
       noiseGate: -70,
       smoothing: 0.1,
+      artifactSuppression: 0.25,
       stability: 4,
       minDuration: 60,
       bendRange: 2,
@@ -135,6 +139,7 @@ const presets = {
       lowpass: 3500,
       noiseGate: -75,
       smoothing: 0.2,
+      artifactSuppression: 0.3,
       stability: 5,
       minDuration: 80,
       bendRange: 4,
@@ -157,6 +162,7 @@ const presets = {
       lowpass: 3600,
       noiseGate: -75,
       smoothing: 0.15,
+      artifactSuppression: 0.35,
       stability: 5,
       minDuration: 90,
       bendRange: 2,
@@ -185,6 +191,7 @@ const applyPreset = (presetKey) => {
   ui.lowpass.value = values.lowpass;
   ui.noiseGate.value = values.noiseGate;
   ui.smoothing.value = values.smoothing;
+  ui.artifactSuppression.value = values.artifactSuppression;
   ui.stability.value = values.stability;
   ui.minDuration.value = values.minDuration;
   ui.bendRange.value = values.bendRange;
@@ -221,6 +228,7 @@ const getControlBindings = () => [
     [ui.lowpass, ui.lowpassValue, " Hz"],
     [ui.noiseGate, ui.noiseGateValue, " dB"],
     [ui.smoothing, ui.smoothingValue, ""],
+    [ui.artifactSuppression, ui.artifactSuppressionValue, ""],
     [ui.stability, ui.stabilityValue, ""],
     [ui.minDuration, ui.minDurationValue, " ms"],
     [ui.bendRange, ui.bendRangeValue, ""],
@@ -440,7 +448,12 @@ const handlePitch = (frequency, rms, clarity, onset) => {
   ui.velocity.textContent = velocity;
   ui.clarity.textContent = clarity.toFixed(2);
 
-  if (clarity < Number(ui.clarityThreshold.value)) {
+  const artifactSuppression = Number(ui.artifactSuppression.value);
+  const effectiveClarityThreshold = Math.min(
+    0.98,
+    Number(ui.clarityThreshold.value) + artifactSuppression * 0.2,
+  );
+  if (clarity < effectiveClarityThreshold) {
     stableCount = 0;
     if (currentNote !== null) {
       const now = performance.now();
@@ -472,7 +485,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
     stableCount = 0;
   }
 
-  const baseStability = Number(ui.stability.value);
+  const baseStability = Number(ui.stability.value) + Math.round(artifactSuppression * 4);
   const requiredStability = onset ? Math.max(2, Math.round(baseStability * 0.6)) : baseStability;
   if (stableCount >= requiredStability) {
     const now = performance.now();
