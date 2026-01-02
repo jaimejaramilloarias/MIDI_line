@@ -61,8 +61,8 @@
         <div class="control-grid">
           <label>
             Ganancia de entrada (dB)
-            <input id="input-gain" type="range" min="-12" max="24" step="1" value="6" />
-            <span id="input-gain-value">6 dB</span>
+            <input id="input-gain" type="range" min="-12" max="24" step="1" value="12" />
+            <span id="input-gain-value">12 dB</span>
           </label>
           <label>
             Filtro pasa altos (Hz)
@@ -76,13 +76,13 @@
           </label>
           <label>
             Puerta de ruido (dB)
-            <input id="noise-gate" type="range" min="-90" max="-20" value="-60" />
-            <span id="noise-gate-value">-60 dB</span>
+            <input id="noise-gate" type="range" min="-90" max="-20" value="-90" />
+            <span id="noise-gate-value">-90 dB</span>
           </label>
           <label>
             Suavizado de tono
-            <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0.45" />
-            <span id="smoothing-value">0.45</span>
+            <input id="smoothing" type="range" min="0" max="0.95" step="0.05" value="0" />
+            <span id="smoothing-value">0</span>
           </label>
           <label>
             Estabilidad mínima (frames)
@@ -91,8 +91,8 @@
           </label>
           <label>
             Duración mínima nota (ms)
-            <input id="min-duration" type="range" min="40" max="400" step="10" value="80" />
-            <span id="min-duration-value">80 ms</span>
+            <input id="min-duration" type="range" min="40" max="400" step="10" value="40" />
+            <span id="min-duration-value">40 ms</span>
           </label>
           <label>
             Rango de pitch bend (semitonos)
@@ -108,8 +108,8 @@
           </label>
           <label>
             Umbral de cambio de nota (cents)
-            <input id="note-hysteresis" type="range" min="10" max="80" value="35" />
-            <span id="note-hysteresis-value">35</span>
+            <input id="note-hysteresis" type="range" min="10" max="80" value="50" />
+            <span id="note-hysteresis-value">50</span>
           </label>
           <label>
             Frecuencia mínima (Hz)
@@ -123,28 +123,28 @@
           </label>
           <label>
             Umbral de claridad
-            <input id="clarity-threshold" type="range" min="0.5" max="0.98" step="0.01" value="0.78" />
-            <span id="clarity-threshold-value">0.78</span>
+            <input id="clarity-threshold" type="range" min="0.5" max="0.98" step="0.01" value="0.5" />
+            <span id="clarity-threshold-value">0.5</span>
           </label>
           <label>
             Delta de ataque (dB)
-            <input id="attack-threshold" type="range" min="2" max="12" step="1" value="6" />
-            <span id="attack-threshold-value">6 dB</span>
+            <input id="attack-threshold" type="range" min="2" max="12" step="1" value="2" />
+            <span id="attack-threshold-value">2 dB</span>
           </label>
           <label>
             Sensibilidad de velocidad
-            <input id="velocity" type="range" min="0.2" max="1" step="0.05" value="0.7" />
-            <span id="velocity-value">0.7</span>
+            <input id="velocity" type="range" min="0.2" max="1" step="0.05" value="1" />
+            <span id="velocity-value">1</span>
           </label>
           <label>
             Intervalo de análisis (ms)
-            <input id="analysis-interval" type="range" min="10" max="100" step="5" value="20" />
-            <span id="analysis-interval-value">20 ms</span>
+            <input id="analysis-interval" type="range" min="10" max="100" step="5" value="10" />
+            <span id="analysis-interval-value">10 ms</span>
           </label>
           <label class="toggle">
             <span>Monitor interno</span>
             <div class="toggle-row">
-              <input id="monitor-enabled" type="checkbox" checked />
+              <input id="monitor-enabled" type="checkbox" />
               <small>Escucha el MIDI sin dispositivo externo</small>
             </div>
           </label>
