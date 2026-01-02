@@ -82,6 +82,31 @@ header p {
   gap: 16px;
 }
 
+.controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.preset-select {
+  min-width: 220px;
+  background: #151d33;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+
+.preset-select select {
+  margin-top: 8px;
+  width: 100%;
+  background: #0c111f;
+  color: #e4e8f0;
+  border: 1px solid #1f2a44;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
 .button-row {
   display: flex;
   gap: 12px;

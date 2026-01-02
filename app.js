@@ -42,6 +42,7 @@ const ui = {
   monitorEnabled: document.getElementById("monitor-enabled"),
   monitorVolume: document.getElementById("monitor-volume"),
   monitorVolumeValue: document.getElementById("monitor-volume-value"),
+  preset: document.getElementById("preset"),
 };
 
 let audioContext;
@@ -63,6 +64,7 @@ let lastNoteOffTime = 0;
 let lastFrequency = 0;
 let lastClarity = 0;
 let lastRmsDb = -120;
+let rearmReady = true;
 let monitorContext;
 let monitorGain;
 let monitorOscillator;
@@ -80,8 +82,140 @@ const updateValue = (input, output, suffix = "") => {
   output.textContent = `${input.value}${suffix}`;
 };
 
-const initControlBindings = () => {
-  const bindings = [
+const presets = {
+  lento: {
+    label: "Tocar lento (sostenido limpio)",
+    values: {
+      inputGain: 10,
+      highpass: 70,
+      lowpass: 3200,
+      noiseGate: -75,
+      smoothing: 0.35,
+      stability: 8,
+      minDuration: 140,
+      bendRange: 2,
+      pitchBendEnabled: false,
+      noteHysteresis: 55,
+      minFrequency: 70,
+      maxFrequency: 1200,
+      clarityThreshold: 0.62,
+      attackThreshold: 6,
+      velocitySensitivity: 0.8,
+      analysisInterval: 20,
+      monitorVolume: 0.4,
+    },
+  },
+  rapido: {
+    label: "Tocar rápido (picking)",
+    values: {
+      inputGain: 12,
+      highpass: 80,
+      lowpass: 3800,
+      noiseGate: -70,
+      smoothing: 0.1,
+      stability: 4,
+      minDuration: 60,
+      bendRange: 2,
+      pitchBendEnabled: false,
+      noteHysteresis: 45,
+      minFrequency: 70,
+      maxFrequency: 1400,
+      clarityThreshold: 0.55,
+      attackThreshold: 4,
+      velocitySensitivity: 1,
+      analysisInterval: 10,
+      monitorVolume: 0.45,
+    },
+  },
+  pitchbend: {
+    label: "Pitch bend activo (gliss)",
+    values: {
+      inputGain: 12,
+      highpass: 70,
+      lowpass: 3500,
+      noiseGate: -75,
+      smoothing: 0.2,
+      stability: 5,
+      minDuration: 80,
+      bendRange: 4,
+      pitchBendEnabled: true,
+      noteHysteresis: 35,
+      minFrequency: 70,
+      maxFrequency: 1400,
+      clarityThreshold: 0.55,
+      attackThreshold: 4,
+      velocitySensitivity: 0.9,
+      analysisInterval: 10,
+      monitorVolume: 0.45,
+    },
+  },
+  vibrato: {
+    label: "Vibrato expresivo",
+    values: {
+      inputGain: 12,
+      highpass: 70,
+      lowpass: 3600,
+      noiseGate: -75,
+      smoothing: 0.15,
+      stability: 5,
+      minDuration: 90,
+      bendRange: 2,
+      pitchBendEnabled: true,
+      noteHysteresis: 30,
+      minFrequency: 70,
+      maxFrequency: 1400,
+      clarityThreshold: 0.56,
+      attackThreshold: 4,
+      velocitySensitivity: 0.9,
+      analysisInterval: 10,
+      monitorVolume: 0.45,
+    },
+  },
+};
+
+const applyPreset = (presetKey) => {
+  const preset = presets[presetKey];
+  if (!preset) {
+    return;
+  }
+
+  const { values } = preset;
+  ui.inputGain.value = values.inputGain;
+  ui.highpass.value = values.highpass;
+  ui.lowpass.value = values.lowpass;
+  ui.noiseGate.value = values.noiseGate;
+  ui.smoothing.value = values.smoothing;
+  ui.stability.value = values.stability;
+  ui.minDuration.value = values.minDuration;
+  ui.bendRange.value = values.bendRange;
+  ui.pitchBendEnabled.checked = values.pitchBendEnabled;
+  ui.noteHysteresis.value = values.noteHysteresis;
+  ui.minFrequency.value = values.minFrequency;
+  ui.maxFrequency.value = values.maxFrequency;
+  ui.clarityThreshold.value = values.clarityThreshold;
+  ui.attackThreshold.value = values.attackThreshold;
+  ui.velocitySensitivity.value = values.velocitySensitivity;
+  ui.analysisInterval.value = values.analysisInterval;
+  ui.monitorVolume.value = values.monitorVolume;
+
+  refreshControlDisplays();
+
+  if (gainNode) {
+    gainNode.gain.value = 10 ** (Number(ui.inputGain.value) / 20);
+  }
+  if (highpassFilter) {
+    highpassFilter.frequency.value = Number(ui.highpass.value);
+  }
+  if (lowpassFilter) {
+    lowpassFilter.frequency.value = Number(ui.lowpass.value);
+  }
+  if (monitorGain) {
+    monitorGain.gain.value = Number(ui.monitorVolume.value);
+  }
+  log(`Preset aplicado: ${preset.label}`);
+};
+
+const getControlBindings = () => [
     [ui.inputGain, ui.inputGainValue, " dB"],
     [ui.highpass, ui.highpassValue, " Hz"],
     [ui.lowpass, ui.lowpassValue, " Hz"],
@@ -99,6 +233,15 @@ const initControlBindings = () => {
     [ui.analysisInterval, ui.analysisIntervalValue, " ms"],
     [ui.monitorVolume, ui.monitorVolumeValue, ""],
   ];
+
+const refreshControlDisplays = () => {
+  getControlBindings().forEach(([input, output, suffix]) => {
+    updateValue(input, output, suffix);
+  });
+};
+
+const initControlBindings = () => {
+  const bindings = getControlBindings();
 
   bindings.forEach(([input, output, suffix]) => {
     updateValue(input, output, suffix);
@@ -277,6 +420,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
         lastStableNote = null;
         stableCount = 0;
         lastNoteOffTime = now;
+        rearmReady = true;
       }
     }
     ui.note.textContent = "--";
@@ -308,6 +452,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
         currentNote = null;
         lastStableNote = null;
         lastNoteOffTime = now;
+        rearmReady = true;
       }
     }
     return;
@@ -334,6 +479,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
     const minRepeatInterval = Math.max(20, minDuration * 0.4);
     const canRetriggerSameNote =
       onset &&
+      rearmReady &&
       currentNote === note &&
       now - lastNoteOnTime >= minRepeatInterval &&
       now - lastNoteOffTime >= minRepeatInterval;
@@ -346,6 +492,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
         sendNoteOff(currentNote);
         log(`Note Off ${midiToNoteName(currentNote)}`);
         lastNoteOffTime = now;
+        rearmReady = true;
       }
       currentNote = note;
       lastNoteOnTime = now;
@@ -355,6 +502,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
       }
       log(`Note On ${midiToNoteName(note)} vel ${velocity}`);
       setMonitorActive(true, note, velocity);
+      rearmReady = false;
     }
   }
 
@@ -377,6 +525,9 @@ const analyze = () => {
   const rmsDb = dbFromRms(rms);
   const deltaDb = rmsDb - lastRmsDb;
   lastRmsDb = rmsDb;
+  if (rmsDb < Number(ui.noiseGate.value) + 3) {
+    rearmReady = true;
+  }
   const clarityBoost = (clarity || 0) - lastClarity;
   const onset =
     deltaDb > Number(ui.attackThreshold.value) ||
@@ -512,6 +663,7 @@ const stop = () => {
   lastStableNote = null;
   lastRmsDb = -120;
   lastNoteOffTime = 0;
+  rearmReady = true;
   log("Conversión detenida.");
 };
 
@@ -556,3 +708,22 @@ ui.monitorEnabled.addEventListener("change", () => {
 });
 
 initControlBindings();
+const initPresets = () => {
+  if (!ui.preset) {
+    return;
+  }
+  ui.preset.innerHTML = "";
+  Object.entries(presets).forEach(([key, preset]) => {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = preset.label;
+    ui.preset.appendChild(option);
+  });
+  ui.preset.value = "rapido";
+  applyPreset(ui.preset.value);
+  ui.preset.addEventListener("change", (event) => {
+    applyPreset(event.target.value);
+  });
+};
+
+initPresets();
