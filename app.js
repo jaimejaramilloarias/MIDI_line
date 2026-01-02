@@ -263,10 +263,12 @@ const updateMidiOutputList = () => {
 };
 
 const handlePitch = (frequency, rms, clarity, onset) => {
+  const minDuration = Number(ui.minDuration.value);
+  const releaseWindow = Math.max(15, minDuration * 0.6);
   if (!frequency) {
     if (currentNote !== null) {
       const now = performance.now();
-      if (now - lastNoteOnTime > Number(ui.minDuration.value)) {
+      if (now - lastNoteOnTime > releaseWindow) {
         sendNoteOff(currentNote);
         sendPitchBend(0);
         log(`Note Off ${midiToNoteName(currentNote)}`);
@@ -298,7 +300,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
     stableCount = 0;
     if (currentNote !== null) {
       const now = performance.now();
-      if (now - lastNoteOnTime > Number(ui.minDuration.value)) {
+      if (now - lastNoteOnTime > releaseWindow) {
         sendNoteOff(currentNote);
         sendPitchBend(0);
         log(`Note Off ${midiToNoteName(currentNote)}`);
@@ -325,9 +327,11 @@ const handlePitch = (frequency, rms, clarity, onset) => {
     stableCount = 0;
   }
 
-  if (stableCount >= Number(ui.stability.value)) {
+  const baseStability = Number(ui.stability.value);
+  const requiredStability = onset ? Math.max(2, Math.round(baseStability * 0.6)) : baseStability;
+  if (stableCount >= requiredStability) {
     const now = performance.now();
-    const minRepeatInterval = Math.max(40, Number(ui.minDuration.value) * 0.5);
+    const minRepeatInterval = Math.max(20, minDuration * 0.4);
     const canRetriggerSameNote =
       onset &&
       currentNote === note &&
@@ -336,7 +340,7 @@ const handlePitch = (frequency, rms, clarity, onset) => {
     if (currentNote !== note || canRetriggerSameNote) {
       if (currentNote !== null) {
         const duration = now - lastNoteOnTime;
-        if (!onset && duration < Number(ui.minDuration.value)) {
+        if (!onset && duration < minDuration) {
           return;
         }
         sendNoteOff(currentNote);
@@ -373,7 +377,10 @@ const analyze = () => {
   const rmsDb = dbFromRms(rms);
   const deltaDb = rmsDb - lastRmsDb;
   lastRmsDb = rmsDb;
-  const onset = deltaDb > Number(ui.attackThreshold.value);
+  const clarityBoost = (clarity || 0) - lastClarity;
+  const onset =
+    deltaDb > Number(ui.attackThreshold.value) ||
+    (clarityBoost > 0.08 && rmsDb > Number(ui.noiseGate.value) + 6);
   const smoothing = Number(ui.smoothing.value);
   let effectiveSmoothing = smoothing;
   if (frequency && lastFrequency) {
@@ -429,7 +436,9 @@ const start = async () => {
         autoGainControl: false,
       },
     });
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({
+      latencyHint: "interactive",
+    });
     const source = audioContext.createMediaStreamSource(mediaStream);
     gainNode = audioContext.createGain();
     highpassFilter = audioContext.createBiquadFilter();
@@ -443,8 +452,8 @@ const start = async () => {
     lowpassFilter.type = "lowpass";
     lowpassFilter.frequency.value = Number(ui.lowpass.value);
     lowpassFilter.Q.value = 0.8;
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.2;
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.1;
 
     source.connect(gainNode);
     gainNode.connect(highpassFilter);
